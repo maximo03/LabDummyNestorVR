@@ -1,0 +1,100 @@
+# ASP.NET
+# Build and test ASP.NET projects.
+# Add steps that publish symbols, save build artifacts, deploy, and more:
+# https://docs.microsoft.com/azure/devops/pipelines/apps/aspnet/build-aspnet-4
+
+pool:
+  name: DummyBHD
+  demands:
+   - agent.name -equals VM-DUMMY-SERVER
+
+variables:
+ BuildConfiguration: 'Release'
+
+stages:
+- stage: stage1
+  displayName: stage1
+  jobs:
+  - job: job1
+    displayName: job1
+    steps:
+          - task: DotNetCoreCLI@2
+            displayName: DotnetRestore
+            inputs:
+              command: 'restore'
+              projects: 'appcloud/appcloud.sln'
+              feedsToUse: 'select'
+          - task: SonarQubePrepare@5
+            displayName: SonarPrepare
+            inputs:
+              SonarQube: 'SC_SonarCube'
+              scannerMode: 'MSBuild'
+              projectKey: 'BHDDummy_key'
+              projectName: 'BHDDummy'
+          - task: DotNetCoreCLI@2
+            displayName: DotnetBuild
+            inputs:
+              command: 'build'
+              projects: 'appcloud/appcloud.sln'
+              arguments: '--configuration $(BuildConfiguration)'
+          - task: DotNetCoreCLI@2
+            displayName: DotnetPublish
+            inputs:
+              command: 'publish'
+              publishWebProjects: false
+              projects: 'appcloud/appcloud.sln'
+              arguments: '--configuration $(BuildConfiguration) --output $(build.artifactstagingdirectory)'
+              zipAfterPublish: false
+          - task: SonarQubeAnalyze@5
+            displayName: SonarScan
+            inputs:
+              jdkversion: 'JAVA_HOME_17_X64'
+          - task: SonarQubePublish@5
+            displayName: SonarPublish
+            inputs:
+              pollingTimeoutSec: '300'
+          - task: Docker@2
+            displayName: DeployDockerHub
+            inputs:
+              containerRegistry: 'SC_DockerHub'
+              repository: 'elmaximo/appcloud'
+              command: 'buildAndPush'
+              Dockerfile: '**/Dockerfile'
+          - task: Docker@2
+            displayName: DeployImgACR
+            inputs:
+              containerRegistry: 'sc_acrbhdemo'
+              repository: 'acrbhddemo'
+              command: 'buildAndPush'
+              Dockerfile: '**/Dockerfile'
+          - task: Kubernetes@1
+            displayName: DeployImgAKS
+            inputs:
+              connectionType: 'Azure Resource Manager'
+              azureSubscriptionEndpoint: 'Azure subscription 1(bde64cb7-4a67-4843-8458-e90d31fe95b8)'
+              azureResourceGroup: 'rg-bhddemo'
+              kubernetesCluster: 'aksbhddemo'
+              namespace: 'default'
+              command: 'apply'
+              useConfigurationFile: true
+              configuration: 'deploy'
+              secretType: 'dockerRegistry'
+              containerRegistryType: 'Container Registry'
+              dockerRegistryEndpoint: 'sc_acrbhdemo'
+              forceUpdate: false
+
+- stage: stage2
+  displayName: stage2
+  jobs:
+  - job: job2
+    displayName: job2
+    steps:
+    - task: PowerShell@2
+      displayName: ExecHello
+      inputs:
+        filePath: 'powershell/HelloWorld.ps1'
+    - task: PowerShell@2
+      displayName: ExecDocs
+      inputs:
+        filePath: 'powershell/Docs.ps1'
+
