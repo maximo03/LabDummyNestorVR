@@ -1,1 +1,1 @@
-![hustlin_erd](LabDummy.pdf)
+xfun::embed_file("LabDummy.pdf")
